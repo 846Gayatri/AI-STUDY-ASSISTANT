@@ -1,0 +1,255 @@
+from dotenv import load_dotenv
+load_dotenv()
+
+from flask import Flask, render_template, request, jsonify, redirect, send_file, Response
+import os, json
+
+from db.database import init_db, get_db
+from agents import document_agent, summarizer_agent, quiz_agent, qa_agent, study_plan_agent
+from agents.orchestrator import route
+from fpdf import FPDF
+import tempfile
+app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET_KEY")
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+init_db()
+
+@app.route("/")
+def index():
+    conn = get_db()
+    docs = conn.execute("SELECT * FROM documents ORDER BY uploaded_at DESC").fetchall()
+    conn.close()
+    return render_template("index.html", documents=docs)
+
+@app.route("/upload", methods=["POST"])
+def upload():
+    file = request.files["file"]
+    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+    file.save(filepath)
+
+    text = document_agent.extract_text(filepath)
+    chunks = document_agent.chunk_text(text)
+
+    conn = get_db()
+    cur = conn.execute("INSERT INTO documents (filename, raw_text) VALUES (?, ?)",
+                        (file.filename, text))
+    doc_id = cur.lastrowid
+    for i, chunk in enumerate(chunks):
+        try:
+            emb = qa_agent.embed(chunk)
+            emb_str = json.dumps(emb)
+        except Exception as e:
+            print(f"Embedding failed: {e}")
+            emb_str = None
+        conn.execute("INSERT INTO chunks (document_id, chunk_text, chunk_index, embedding) VALUES (?, ?, ?, ?)",
+                      (doc_id, chunk, i, emb_str))
+    conn.commit()
+    conn.close()
+    return redirect(f"/document/{doc_id}")
+
+@app.route("/document/<int:doc_id>")
+def document_view(doc_id):
+    conn = get_db()
+    doc = conn.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
+    conn.close()
+    return render_template("document.html", document=doc)
+
+@app.route("/api/summarize/<int:doc_id>")
+def api_summarize(doc_id):
+    conn = get_db()
+    doc = conn.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
+    summary = summarizer_agent.summarize(doc["raw_text"])
+    conn.execute("INSERT INTO summaries (document_id, summary_text) VALUES (?, ?)",
+                 (doc_id, summary))
+    conn.commit()
+    conn.close()
+    return jsonify({"summary": summary})
+
+@app.route("/api/quiz/<int:doc_id>")
+def api_quiz(doc_id):
+    # Adaptive Difficulty Logic
+    conn = get_db()
+    attempts = conn.execute("SELECT score, total_questions FROM quiz_attempts WHERE document_id=?", (doc_id,)).fetchall()
+    
+    if attempts:
+        avg_score = sum([a["score"] / a["total_questions"] for a in attempts]) / len(attempts)
+        if avg_score >= 0.8:
+            difficulty = "hard"
+        elif avg_score <= 0.5:
+            difficulty = "easy"
+        else:
+            difficulty = "medium"
+    else:
+        difficulty = request.args.get("difficulty", "medium")
+        
+    doc = conn.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
+    quiz = quiz_agent.generate_quiz(doc["raw_text"], difficulty=difficulty)
+    for q in quiz:
+        conn.execute("""INSERT INTO quizzes (document_id, question, options, correct_answer, difficulty)
+                         VALUES (?, ?, ?, ?, ?)""",
+                     (doc_id, q["question"], json.dumps(q["options"]), q["correct_answer"], difficulty))
+    conn.commit()
+    conn.close()
+    return jsonify(quiz)
+
+@app.route("/api/ask/<int:doc_id>", methods=["POST"])
+def api_ask(doc_id):
+    question = request.json["question"]
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT c.chunk_text, c.chunk_index, c.embedding, d.filename FROM chunks c JOIN documents d ON c.document_id = d.id WHERE c.document_id=?", 
+        (doc_id,)).fetchall()
+    conn.close()
+
+    chunks_with_info = []
+    for r in rows:
+        chunks_with_info.append({
+            "chunk_text": r["chunk_text"],
+            "chunk_index": r["chunk_index"],
+            "embedding": json.loads(r["embedding"]) if r["embedding"] else None,
+            "filename": r["filename"]
+        })
+
+    relevant = qa_agent.retrieve_relevant_chunks(question, chunks_with_info)
+    
+    def generate():
+        full_response = []
+        for text in qa_agent.answer_question_stream(question, relevant):
+            full_response.append(text)
+            yield text
+            
+        # Log to DB after stream finishes
+        conn_db = get_db()
+        conn_db.execute("INSERT INTO chat_history (document_id, question, answer) VALUES (?, ?, ?)",
+                        (doc_id, question, "".join(full_response)))
+        conn_db.commit()
+        conn_db.close()
+
+    return Response(generate(), mimetype='text/plain')
+
+@app.route("/api/ask-all", methods=["POST"])
+def api_ask_all():
+    question = request.json["question"]
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT c.chunk_text, c.chunk_index, c.embedding, d.filename FROM chunks c JOIN documents d ON c.document_id = d.id"
+    ).fetchall()
+    conn.close()
+
+    chunks_with_info = []
+    for r in rows:
+        chunks_with_info.append({
+            "chunk_text": r["chunk_text"],
+            "chunk_index": r["chunk_index"],
+            "embedding": json.loads(r["embedding"]) if r["embedding"] else None,
+            "filename": r["filename"]
+        })
+
+    relevant = qa_agent.retrieve_relevant_chunks(question, chunks_with_info)
+    
+    def generate():
+        for text in qa_agent.answer_question_stream(question, relevant):
+            yield text
+
+    return Response(generate(), mimetype='text/plain')
+
+@app.route("/api/study-plan/<int:doc_id>")
+def api_study_plan(doc_id):
+    days = int(request.args.get("days", 7))
+    conn = get_db()
+    summary_row = conn.execute(
+        "SELECT * FROM summaries WHERE document_id=? ORDER BY created_at DESC LIMIT 1", (doc_id,)).fetchone()
+    summary_text = summary_row["summary_text"] if summary_row else ""
+    plan = study_plan_agent.generate_study_plan(summary_text, "", days_until_exam=days)
+    conn.execute("INSERT INTO study_plans (document_id, plan_json, exam_date) VALUES (?, ?, ?)",
+                 (doc_id, json.dumps(plan), ""))
+    conn.commit()
+    conn.close()
+    return jsonify(plan)
+
+@app.route("/api/route", methods=["POST"])
+def api_route():
+    """Single smart endpoint — the orchestrator decides what the user wants."""
+    user_input = request.json["query"]
+    intent = route(user_input, "")
+    return jsonify({"intent": intent})
+
+@app.route("/api/quiz-submit/<int:doc_id>", methods=["POST"])
+def api_quiz_submit(doc_id):
+    data = request.json
+    score = data.get("score", 0)
+    total = data.get("total", 0)
+    difficulty = data.get("difficulty", "medium")
+    
+    conn = get_db()
+    conn.execute("INSERT INTO quiz_attempts (document_id, score, total_questions, difficulty) VALUES (?, ?, ?, ?)",
+                 (doc_id, score, total, difficulty))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success"})
+
+@app.route("/api/progress/<int:doc_id>")
+def api_progress(doc_id):
+    conn = get_db()
+    attempts = conn.execute("SELECT score, total_questions, created_at FROM quiz_attempts WHERE document_id=? ORDER BY created_at ASC", (doc_id,)).fetchall()
+    conn.close()
+    
+    data = []
+    for a in attempts:
+        data.append({
+            "score": a["score"],
+            "total": a["total_questions"],
+            "date": a["created_at"]
+        })
+    return jsonify(data)
+
+@app.route("/api/export-plan/<int:doc_id>")
+def api_export_plan(doc_id):
+    conn = get_db()
+    plan_row = conn.execute("SELECT plan_json FROM study_plans WHERE document_id=? ORDER BY created_at DESC LIMIT 1", (doc_id,)).fetchone()
+    conn.close()
+    
+    if not plan_row:
+        return "No study plan found", 404
+        
+    plan = json.loads(plan_row["plan_json"])
+    
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(200, 10, txt="AI Study Plan", ln=True, align='C')
+    pdf.ln(10)
+    
+    for day, details in plan.items():
+        pdf.set_font("Arial", 'B', 14)
+        pdf.cell(200, 10, txt=str(day).replace('_', ' ').title(), ln=True)
+        
+        pdf.set_font("Arial", '', 12)
+        pdf.cell(200, 8, txt=f"Estimated Hours: {details.get('est_hours', 'N/A')}", ln=True)
+        
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(200, 8, txt="Topics:", ln=True)
+        pdf.set_font("Arial", '', 12)
+        for t in details.get('topics', []):
+            pdf.cell(200, 8, txt=f"- {t}", ln=True)
+            
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(200, 8, txt="Tasks:", ln=True)
+        pdf.set_font("Arial", '', 12)
+        for t in details.get('tasks', []):
+            pdf.cell(200, 8, txt=f"- {t}", ln=True)
+            
+        pdf.ln(5)
+        
+    fd, temp_path = tempfile.mkstemp(suffix=".pdf")
+    os.close(fd)
+    pdf.output(temp_path)
+    
+    return send_file(temp_path, as_attachment=True, download_name=f"study_plan_{doc_id}.pdf")
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5050)

@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  <h2>Upload Study Material</h2>
+  <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Upload a PDF or text file to generate summaries, quizzes, and study plans.</p>
+  <form action="/upload" method="POST" enctype="multipart/form-data" id="uploadForm">
+    <input type="file" name="file" required accept=".pdf,.txt">
+    <button type="submit" id="uploadBtn">
+      <span>Upload Document</span>
+      <div class="loader" id="uploadLoader"></div>
+    </button>
+  </form>
+</div>
+
+<!-- Global Q&A box -->
+{% if documents %}
+<div class="card">
+  <h2>Global Document Q&A</h2>
+  <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem;">Ask a question across all your uploaded documents at once. The AI will pull the most relevant context from all files.</p>
+  <div class="qa-box">
+    <input type="text" id="globalQuestion" placeholder="e.g. Synthesize the core concepts of my uploads..." onkeypress="handleEnter(event)">
+    <button onclick="askGlobalQuestion()" id="globalAskBtn">Ask Assistant</button>
+  </div>
+  <div id="globalAnswer" style="background: rgba(139, 92, 246, 0.1); border-left: 4px solid var(--accent); padding: 1rem; border-radius: 0 8px 8px 0; color: var(--text-primary); margin-top: 1rem; display: none; line-height: 1.6; white-space: pre-wrap;"></div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Your Documents</h2>
+  {% if documents %}
+    <ul class="doc-list">
+      {% for doc in documents %}
+      <li>
+        <a href="/document/{{ doc.id }}">{{ doc.filename }}</a>
+        <span class="date">{{ doc.uploaded_at }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p style="color: var(--text-secondary);">No documents uploaded yet.</p>
+  {% endif %}
+</div>
+
+<script>
+  document.getElementById('uploadForm').addEventListener('submit', function() {
+    const btn = document.getElementById('uploadBtn');
+    const loader = document.getElementById('uploadLoader');
+    btn.querySelector('span').textContent = 'Uploading...';
+    loader.style.display = 'inline-block';
+    btn.style.pointerEvents = 'none';
+  });
+
+  function showLoading(button, text) {
+    const originalText = button.innerHTML;
+    button.innerHTML = `${text} <div class="loader" style="display:inline-block; border-width: 2px; width: 14px; height: 14px;"></div>`;
+    button.disabled = true;
+    return originalText;
+  }
+
+  function hideLoading(button, originalText) {
+    button.innerHTML = originalText;
+    button.disabled = false;
+  }
+
+  async function askGlobalQuestion() {
+    const input = document.getElementById("globalQuestion");
+    const q = input.value.trim();
+    if (!q) return;
+
+    const btn = document.getElementById("globalAskBtn");
+    const originalText = showLoading(btn, 'Searching uploads...');
+    
+    const ansDiv = document.getElementById("globalAnswer");
+    ansDiv.innerText = "";
+    ansDiv.style.display = 'block';
+
+    try {
+      const res = await fetch('/api/ask-all', {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({question: q})
+      });
+      
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        ansDiv.innerText += decoder.decode(value);
+      }
+    } catch (e) {
+      ansDiv.innerText = "Failed to fetch answer.";
+      console.error(e);
+    } finally {
+      hideLoading(btn, originalText);
+    }
+  }
+
+  function handleEnter(e) {
+    if (e.key === 'Enter') {
+      askGlobalQuestion();
+    }
+  }
+</script>
+{% endblock %}

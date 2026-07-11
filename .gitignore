@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+db/study_assistant.db
+.env
+uploads/*
+!uploads/.gitkeep
+.system_generated/
+task.md
+implementation_plan.md
+walkthrough.md

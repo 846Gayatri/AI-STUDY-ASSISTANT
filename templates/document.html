@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>{{ document.filename }}</h2>
+  <p class="date" style="margin-bottom: 1.5rem;">Uploaded on {{ document.uploaded_at }}</p>
+
+  <div class="actions">
+    <button onclick="callApi('summarize', this)">Summarize</button>
+    <button onclick="generateQuiz(this)">Generate Quiz</button>
+    <button onclick="generateStudyPlan(this)">Study Plan</button>
+  </div>
+
+  <div id="result"></div>
+  <div id="quiz-container" style="display: none; margin-bottom: 2rem;"></div>
+  
+  <a id="export-pdf-btn" class="button" href="/api/export-plan/{{ document.id }}" style="display: none; background: var(--accent); color: white; padding: 0.75rem 1.5rem; border-radius: 8px; text-decoration: none; margin-bottom: 2rem; align-items: center; justify-content: center;">Export Plan to PDF</a>
+</div>
+
+<div class="card">
+  <h3>Progress Dashboard</h3>
+  <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem;">Track your quiz scores over time.</p>
+  <canvas id="progressChart" width="400" height="150"></canvas>
+</div>
+
+<div class="card">
+  <h3>Ask a Question</h3>
+  <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem;">Ask anything about the document. The AI will answer based purely on the text.</p>
+  <div class="qa-box">
+    <input type="text" id="question" placeholder="e.g. What is the main thesis of this document?" onkeypress="handleEnter(event)">
+    <button onclick="askQuestion()" id="askBtn">Ask</button>
+  </div>
+  <div id="answer"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const docId = {{ document.id }};
+  let currentQuiz = [];
+
+  function showLoading(button, text) {
+    const originalText = button.innerHTML;
+    button.innerHTML = `${text} <div class="loader" style="display:inline-block; border-width: 2px; width: 14px; height: 14px;"></div>`;
+    button.disabled = true;
+    return originalText;
+  }
+
+  function hideLoading(button, originalText) {
+    button.innerHTML = originalText;
+    button.disabled = false;
+  }
+
+  function renderMarkdown(md) {
+    // Simple markdown-to-HTML helper for headers and bullet points
+    return md
+      .replace(/^### (.*$)/gim, '<h4 style="color: var(--accent); margin-top: 1rem; margin-bottom: 0.5rem;">$1</h4>')
+      .replace(/^## (.*$)/gim, '<h3 style="color: var(--primary); margin-top: 1.5rem; margin-bottom: 0.5rem;">$1</h3>')
+      .replace(/^# (.*$)/gim, '<h2 style="color: var(--text-primary); margin-top: 2rem; margin-bottom: 0.5rem;">$1</h2>')
+      .replace(/^\- (.*$)/gim, '<li style="margin-left: 1.25rem; margin-bottom: 0.25rem; color: var(--text-secondary);">$1</li>')
+      .split('\n').join('<br>');
+  }
+
+  async function callApi(endpoint, button) {
+    const originalText = showLoading(button, 'Processing...');
+    const resultDiv = document.getElementById("result");
+    document.getElementById("quiz-container").style.display = 'none';
+    document.getElementById("export-pdf-btn").style.display = 'none';
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = "Loading...";
+    
+    try {
+      const res = await fetch(`/api/${endpoint}/${docId}`);
+      const data = await res.json();
+      
+      if (endpoint === 'summarize') {
+        resultDiv.innerHTML = `
+          <div style="background: rgba(255,255,255,0.05); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border-color); line-height: 1.6;">
+            ${renderMarkdown(data.summary)}
+          </div>
+        `;
+      } else {
+        resultDiv.innerText = JSON.stringify(data, null, 2);
+      }
+    } catch (e) {
+      resultDiv.innerText = "Error processing request.";
+      console.error(e);
+    } finally {
+      hideLoading(button, originalText);
+    }
+  }
+
+  async function generateStudyPlan(button) {
+    const originalText = showLoading(button, 'Processing...');
+    const resultDiv = document.getElementById("result");
+    document.getElementById("quiz-container").style.display = 'none';
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = "Loading...";
+    
+    try {
+      const res = await fetch(`/api/study-plan/${docId}`);
+      const data = await res.json();
+      
+      let html = `<div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin-bottom: 1.5rem;">`;
+      for (const [day, details] of Object.entries(data)) {
+        const dayTitle = day.replace('_', ' ').toUpperCase();
+        html += `
+          <div style="background: rgba(255,255,255,0.05); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border-color); display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <h4 style="color: var(--primary); margin: 0 0 0.5rem 0; font-size: 1.1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">${dayTitle}</h4>
+              <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.75rem;">Est. Hours: <strong style="color: var(--text-primary);">${details.est_hours}h</strong></p>
+              
+              <div style="margin-bottom: 1rem;">
+                <strong style="font-size: 0.85rem; color: var(--accent); display: block; margin-bottom: 0.25rem;">Topics:</strong>
+                <ul style="margin: 0; padding: 0; list-style-type: none;">
+                  ${details.topics.map(t => `<li style="font-size: 0.9rem; color: var(--text-primary); margin-bottom: 0.25rem;">• ${t}</li>`).join('')}
+                </ul>
+              </div>
+            </div>
+            
+            <div style="border-top: 1px dashed var(--border-color); padding-top: 0.75rem; margin-top: 0.5rem;">
+              <strong style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Tasks:</strong>
+              <ul style="margin: 0; padding: 0; list-style-type: none;">
+                ${details.tasks.map(t => `<li style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">✔ ${t}</li>`).join('')}
+              </ul>
+            </div>
+          </div>
+        `;
+      }
+      html += `</div>`;
+      resultDiv.innerHTML = html;
+      
+      // Show export button once plan is generated
+      document.getElementById("export-pdf-btn").style.display = 'inline-flex';
+    } catch (e) {
+      resultDiv.innerText = "Error processing request.";
+      console.error(e);
+    } finally {
+      hideLoading(button, originalText);
+    }
+  }
+
+  async function generateQuiz(button) {
+    const originalText = showLoading(button, 'Generating...');
+    const resultDiv = document.getElementById("result");
+    const quizDiv = document.getElementById("quiz-container");
+    
+    resultDiv.style.display = 'none';
+    document.getElementById("export-pdf-btn").style.display = 'none';
+    quizDiv.style.display = 'block';
+    quizDiv.innerHTML = "Loading quiz...";
+    
+    try {
+      const res = await fetch(`/api/quiz/${docId}`);
+      currentQuiz = await res.json();
+      renderQuiz();
+    } catch (e) {
+      quizDiv.innerHTML = "Error generating quiz.";
+      console.error(e);
+    } finally {
+      hideLoading(button, originalText);
+    }
+  }
+
+  function renderQuiz() {
+    const quizDiv = document.getElementById("quiz-container");
+    let html = `<h3>Quiz</h3>`;
+    
+    currentQuiz.forEach((q, index) => {
+      html += `<div style="margin-bottom: 1.5rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">`;
+      html += `<p style="font-weight: 500; margin-bottom: 1rem;">${index + 1}. ${q.question}</p>`;
+      
+      q.options.forEach((opt, optIndex) => {
+        html += `
+          <div style="margin-bottom: 0.5rem;">
+            <label style="cursor: pointer; display: flex; gap: 0.5rem; align-items: center;">
+              <input type="radio" name="q${index}" value="${opt}" style="accent-color: var(--primary);">
+              <span>${opt}</span>
+            </label>
+          </div>
+        `;
+      });
+      html += `</div>`;
+    });
+    
+    html += `<button onclick="submitQuiz()" style="margin-top: 1rem;">Submit Answers</button>`;
+    html += `<div id="quiz-result" style="margin-top: 1rem; font-weight: bold; color: var(--accent);"></div>`;
+    
+    quizDiv.innerHTML = html;
+  }
+
+  async function submitQuiz() {
+    let score = 0;
+    currentQuiz.forEach((q, index) => {
+      const selected = document.querySelector(`input[name="q${index}"]:checked`);
+      if (selected && selected.value === q.correct_answer) {
+        score++;
+      }
+    });
+    
+    const resultText = `You scored ${score} out of ${currentQuiz.length}!`;
+    document.getElementById("quiz-result").innerText = resultText;
+    
+    // Save to DB
+    await fetch(`/api/quiz-submit/${docId}`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({score: score, total: currentQuiz.length, difficulty: "medium"})
+    });
+    
+    loadProgress();
+  }
+
+  async function askQuestion() {
+    const input = document.getElementById("question");
+    const q = input.value.trim();
+    if (!q) return;
+
+    const btn = document.getElementById("askBtn");
+    const originalText = showLoading(btn, 'Thinking...');
+    
+    const ansDiv = document.getElementById("answer");
+    ansDiv.innerText = "";
+    ansDiv.style.display = 'block';
+
+    try {
+      const res = await fetch(`/api/ask/${docId}`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({question: q})
+      });
+      
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        ansDiv.innerText += decoder.decode(value);
+      }
+    } catch (e) {
+      ansDiv.innerText = "Failed to fetch answer.";
+      console.error(e);
+    } finally {
+      hideLoading(btn, originalText);
+    }
+  }
+
+  function handleEnter(e) {
+    if (e.key === 'Enter') {
+      askQuestion();
+    }
+  }
+  
+  let chartInstance = null;
+  
+  async function loadProgress() {
+    try {
+      const res = await fetch(`/api/progress/${docId}`);
+      const data = await res.json();
+      
+      const labels = data.map((d, i) => `Attempt ${i + 1}`);
+      const scores = data.map(d => (d.score / d.total) * 100);
+      
+      const ctx = document.getElementById('progressChart').getContext('2d');
+      
+      if (chartInstance) {
+        chartInstance.destroy();
+      }
+      
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Score %',
+            data: scores,
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 100,
+              grid: { color: 'rgba(255, 255, 255, 0.1)' },
+              ticks: { color: '#94a3b8' }
+            },
+            x: {
+              grid: { color: 'rgba(255, 255, 255, 0.1)' },
+              ticks: { color: '#94a3b8' }
+            }
+          },
+          plugins: {
+            legend: {
+              labels: { color: '#f8fafc' }
+            }
+          }
+        }
+      });
+    } catch (e) {
+      console.error("Failed to load progress:", e);
+    }
+  }
+  
+  // Initialize
+  window.onload = loadProgress;
+</script>
+{% endblock %}
