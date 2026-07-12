@@ -26,29 +26,45 @@ def index():
 
 @app.route("/upload", methods=["POST"])
 def upload():
-    file = request.files["file"]
-    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(filepath)
+    try:
+        file = request.files.get("file")
+        if not file or not file.filename:
+            return redirect("/")
+            
+        filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+        file.save(filepath)
 
-    text = document_agent.extract_text(filepath)
-    chunks = document_agent.chunk_text(text)
+        text = document_agent.extract_text(filepath)
+        if not text or not text.strip():
+            conn = get_db()
+            docs = conn.execute("SELECT * FROM documents ORDER BY uploaded_at DESC").fetchall()
+            conn.close()
+            return render_template("index.html", documents=docs, error="Could not extract text. File might be empty or unsupported.")
 
-    conn = get_db()
-    cur = conn.execute("INSERT INTO documents (filename, raw_text) VALUES (?, ?)",
-                        (file.filename, text))
-    doc_id = cur.lastrowid
-    for i, chunk in enumerate(chunks):
-        try:
-            emb = qa_agent.embed(chunk)
-            emb_str = json.dumps(emb)
-        except Exception as e:
-            print(f"Embedding failed: {e}")
-            emb_str = None
-        conn.execute("INSERT INTO chunks (document_id, chunk_text, chunk_index, embedding) VALUES (?, ?, ?, ?)",
-                      (doc_id, chunk, i, emb_str))
-    conn.commit()
-    conn.close()
-    return redirect(f"/document/{doc_id}")
+        chunks = document_agent.chunk_text(text)
+
+        conn = get_db()
+        cur = conn.execute("INSERT INTO documents (filename, raw_text) VALUES (?, ?)",
+                            (file.filename, text))
+        doc_id = cur.lastrowid
+        for i, chunk in enumerate(chunks):
+            try:
+                emb = qa_agent.embed(chunk)
+                emb_str = json.dumps(emb)
+            except Exception as e:
+                print(f"Embedding failed: {e}")
+                emb_str = None
+            conn.execute("INSERT INTO chunks (document_id, chunk_text, chunk_index, embedding) VALUES (?, ?, ?, ?)",
+                          (doc_id, chunk, i, emb_str))
+        conn.commit()
+        conn.close()
+        return redirect(f"/document/{doc_id}")
+    except Exception as e:
+        print(f"Upload exception: {e}")
+        conn = get_db()
+        docs = conn.execute("SELECT * FROM documents ORDER BY uploaded_at DESC").fetchall()
+        conn.close()
+        return render_template("index.html", documents=docs, error=f"An error occurred: {str(e)}")
 
 @app.route("/document/<int:doc_id>")
 def document_view(doc_id):

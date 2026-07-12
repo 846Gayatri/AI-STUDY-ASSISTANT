@@ -6,8 +6,13 @@ def extract_text(filepath):
         reader = PdfReader(filepath)
         return "\n".join(page.extract_text() or "" for page in reader.pages)
     else:
-        with open(filepath, "r", encoding="utf-8") as f:
-            return f.read()
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                return f.read()
+        except UnicodeDecodeError:
+            # Fallback for Windows-1252 or other encodings
+            with open(filepath, "r", encoding="windows-1252", errors="replace") as f:
+                return f.read()
 
 def chunk_text(text, max_tokens=500):
     """Split into chunks by token count so nothing exceeds context limits."""
