@@ -71,12 +71,17 @@ def document_view(doc_id):
     conn = get_db()
     doc = conn.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
     conn.close()
+    if not doc:
+        return redirect("/")
     return render_template("document.html", document=doc)
 
 @app.route("/api/summarize/<int:doc_id>")
 def api_summarize(doc_id):
     conn = get_db()
     doc = conn.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
+    if not doc:
+        conn.close()
+        return jsonify({"summary": "Document not found. It may have been cleared by the server."})
     summary = summarizer_agent.summarize(doc["raw_text"])
     conn.execute("INSERT INTO summaries (document_id, summary_text) VALUES (?, ?)",
                  (doc_id, summary))
@@ -102,6 +107,10 @@ def api_quiz(doc_id):
         difficulty = request.args.get("difficulty", "medium")
         
     doc = conn.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
+    if not doc:
+        conn.close()
+        return jsonify([])
+
     quiz = quiz_agent.generate_quiz(doc["raw_text"], difficulty=difficulty)
     for q in quiz:
         conn.execute("""INSERT INTO quizzes (document_id, question, options, correct_answer, difficulty)
