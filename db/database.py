@@ -1,7 +1,7 @@
 import sqlite3
 
 def get_db():
-    conn = sqlite3.connect("db/study_assistant.db")
+    conn = sqlite3.connect("db/study_assistant.db", timeout=15, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
