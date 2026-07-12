@@ -3,6 +3,7 @@ load_dotenv()
 
 from flask import Flask, render_template, request, jsonify, redirect, send_file, Response
 import os, json
+from werkzeug.exceptions import HTTPException
 
 from db.database import init_db, get_db
 from agents import document_agent, summarizer_agent, quiz_agent, qa_agent, study_plan_agent
@@ -276,6 +277,25 @@ def api_export_plan(doc_id):
     pdf.output(temp_path)
     
     return send_file(temp_path, as_attachment=True, download_name=f"study_plan_{doc_id}.pdf")
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # Pass through HTTP errors
+    if isinstance(e, HTTPException):
+        return e
+    print(f"Unhandled Exception: {e}")
+    # Render a user-friendly error page or JSON
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "An internal server error occurred.", "details": str(e)}), 500
+    
+    conn = get_db()
+    try:
+        docs = conn.execute("SELECT * FROM documents ORDER BY uploaded_at DESC").fetchall()
+    except Exception:
+        docs = []
+    finally:
+        conn.close()
+    return render_template("index.html", documents=docs, error=f"An unexpected error occurred: {str(e)}"), 500
 
 if __name__ == "__main__":
     app.run(debug=True, port=5050)
