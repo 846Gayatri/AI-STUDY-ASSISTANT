@@ -279,8 +279,20 @@ def api_export_plan(doc_id):
     
     return send_file(temp_path, as_attachment=True, download_name=f"study_plan_{doc_id}.pdf")
 
+@app.route("/api/debug-logs")
+def debug_logs():
+    try:
+        with open("error_log.txt", "r") as f:
+            return Response(f.read(), mimetype="text/plain")
+    except Exception as e:
+        return f"No logs found: {e}"
+
 @app.errorhandler(Exception)
 def handle_exception(e):
+    import traceback
+    with open("error_log.txt", "a") as f:
+        f.write(traceback.format_exc() + "\n")
+        
     # Pass through HTTP errors
     if isinstance(e, HTTPException):
         return e
