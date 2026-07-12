@@ -48,13 +48,14 @@ def upload():
         cur = conn.execute("INSERT INTO documents (filename, raw_text) VALUES (?, ?)",
                             (file.filename, text))
         doc_id = cur.lastrowid
-        for i, chunk in enumerate(chunks):
-            try:
-                emb = qa_agent.embed(chunk)
-                emb_str = json.dumps(emb)
-            except Exception as e:
-                print(f"Embedding failed: {e}")
-                emb_str = None
+        try:
+            embeddings = qa_agent.embed_batch(chunks)
+        except Exception as e:
+            print(f"Batch embedding failed: {e}")
+            embeddings = [None] * len(chunks)
+
+        for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
+            emb_str = json.dumps(emb) if emb else None
             conn.execute("INSERT INTO chunks (document_id, chunk_text, chunk_index, embedding) VALUES (?, ?, ?, ?)",
                           (doc_id, chunk, i, emb_str))
         conn.commit()

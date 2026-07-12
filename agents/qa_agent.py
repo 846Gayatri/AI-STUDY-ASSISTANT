@@ -2,14 +2,18 @@ from openai import OpenAI
 import os, numpy as np
 
 def embed(text):
+    return embed_batch([text])[0]
+
+def embed_batch(texts):
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key or api_key == "your_key_here":
-        # Return a dummy 1536-dim embedding vector
-        return [0.1] * 1536
+        # Return a dummy 1536-dim embedding vector for each text
+        return [[0.1] * 1536 for _ in texts]
     
     client = OpenAI(api_key=api_key)
-    resp = client.embeddings.create(model="text-embedding-3-small", input=text)
-    return resp.data[0].embedding
+    # The API can handle arrays of strings efficiently
+    resp = client.embeddings.create(model="text-embedding-3-small", input=texts)
+    return [data.embedding for data in resp.data]
 
 def cosine_sim(a, b):
     a, b = np.array(a), np.array(b)
