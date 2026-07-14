@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 2rem;">
+  <!-- Card 1 -->
+  <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); padding: 1.5rem; border-radius: 16px; backdrop-filter: blur(8px); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+    <span style="font-size: 2.5rem; margin-bottom: 0.5rem;">📚</span>
+    <h3 style="margin: 0; font-size: 1rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Total Documents</h3>
+    <p style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700; color: #3b82f6;">{{ total_docs }}</p>
+  </div>
+  
+  <!-- Card 2 -->
+  <div style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.2); padding: 1.5rem; border-radius: 16px; backdrop-filter: blur(8px); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+    <span style="font-size: 2.5rem; margin-bottom: 0.5rem;">⚔️</span>
+    <h3 style="margin: 0; font-size: 1rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Quizzes Attempted</h3>
+    <p style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700; color: #8b5cf6;">{{ total_quizzes }}</p>
+  </div>
+
+  <!-- Card 3 -->
+  <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 1.5rem; border-radius: 16px; backdrop-filter: blur(8px); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+    <span style="font-size: 2.5rem; margin-bottom: 0.5rem;">🏆</span>
+    <h3 style="margin: 0; font-size: 1rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Average Score</h3>
+    <p style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700; color: #10b981;">{{ avg_score }}%</p>
+  </div>
+
+  <!-- Card 4 -->
+  <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); padding: 1.5rem; border-radius: 16px; backdrop-filter: blur(8px); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+    <span style="font-size: 2.5rem; margin-bottom: 0.5rem;">📅</span>
+    <h3 style="margin: 0; font-size: 1rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Study Plans</h3>
+    <p style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: 700; color: #f59e0b;">{{ total_plans }}</p>
+  </div>
+</div>
+
+<div style="display: grid; gap: 2rem; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); margin-bottom: 2rem;">
+  <!-- Left Side: Chart -->
+  <div class="card" style="padding: 1.5rem; border-radius: 16px;">
+    <h3 style="margin-top: 0;">Aggregate Progress</h3>
+    <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.5rem;">Aggregate view of your quiz scores over time.</p>
+    <div style="position: relative; height: 250px; width: 100%;">
+      <canvas id="aggregateChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Right Side: Recent Activity -->
+  <div class="card" style="padding: 1.5rem; border-radius: 16px; display: flex; flex-direction: column; justify-content: space-between;">
+    <div>
+      <h3 style="margin-top: 0; margin-bottom: 1rem;">Recent Activity</h3>
+      <div style="max-height: 250px; overflow-y: auto; padding-right: 0.5rem;">
+        {% if recent_activities %}
+          <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.75rem;">
+            {% for act in recent_activities %}
+              <li style="font-size: 0.85rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+                <span>
+                  {% if act.action_type == 'upload' %}
+                    📁
+                  {% elif act.action_type == 'quiz' %}
+                    ⚔️
+                  {% elif act.action_type == 'plan' %}
+                    📅
+                  {% else %}
+                    🔧
+                  {% endif %}
+                  {{ act.description }}
+                </span>
+                <span style="color: var(--text-secondary); font-size: 0.75rem; white-space: nowrap;">{{ act.created_at }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 0;">No activities logged yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="padding: 1.5rem; border-radius: 16px;">
+  <h3 style="margin-top: 0; margin-bottom: 1.5rem;">Your Study Materials</h3>
+  {% if recent_docs %}
+    <div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));">
+      {% for doc in recent_docs %}
+        <a href="/document/{{ doc.id }}" style="text-decoration: none; color: inherit;">
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); padding: 1.25rem; border-radius: 12px; transition: transform 0.2s, background-color 0.2s; cursor: pointer; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;" 
+               onmouseover="this.style.background='rgba(255,255,255,0.08)'; this.style.transform='translateY(-2px)'" 
+               onmouseout="this.style.background='rgba(255,255,255,0.03)'; this.style.transform='translateY(0)'">
+            <h4 style="margin: 0 0 0.5rem 0; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; color: var(--text-primary); font-size: 1rem;">📄 {{ doc.filename }}</h4>
+            <span style="color: var(--text-secondary); font-size: 0.8rem;">Uploaded: {{ doc.uploaded_at }}</span>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p style="color: var(--text-secondary); font-size: 0.9rem; text-align: center; margin: 2rem 0;">No documents uploaded yet. <a href="/" style="color: var(--primary); text-decoration: underline;">Upload one now</a>.</p>
+  {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const rawAttempts = JSON.parse('{{ attempts_data | safe }}');
+  const ctx = document.getElementById('aggregateChart').getContext('2d');
+  
+  if (rawAttempts.length === 0) {
+    ctx.font = "14px 'Inter'";
+    ctx.fillStyle = "#94a3b8";
+    ctx.textAlign = "center";
+    ctx.fillText("No quiz attempts yet.", 200, 125);
+  } else {
+    const labels = rawAttempts.map((_, i) => `Attempt ${i + 1}`);
+    const dataPoints = rawAttempts.map(a => Math.round((a.score / a.total) * 100));
+    
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Quiz Score (%)',
+          data: dataPoints,
+          borderColor: '#8b5cf6',
+          backgroundColor: 'rgba(139, 92, 246, 0.1)',
+          borderWidth: 3,
+          fill: true,
+          tension: 0.4,
+          pointRadius: 4,
+          pointBackgroundColor: '#8b5cf6'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          y: {
+            min: 0,
+            max: 100,
+            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: { color: '#94a3b8' }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: '#94a3b8' }
+          }
+        }
+      }
+    });
+  }
+</script>
+{% endblock %}

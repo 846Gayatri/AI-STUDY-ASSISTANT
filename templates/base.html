@@ -7,8 +7,13 @@
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-  <nav class="navbar">
+  <nav class="navbar" style="display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; padding: 1rem 2rem;">
     <a href="/">📚 AI Study Assistant</a>
+    <div style="display: flex; gap: 1.5rem; font-size: 1rem; font-weight: 500; align-items: center;">
+      <a href="/" style="transition: color 0.2s;">Home</a>
+      <a href="/dashboard" style="transition: color 0.2s;">Dashboard</a>
+      <a href="/profile" style="transition: color 0.2s;">Profile</a>
+    </div>
   </nav>
   <main class="container">
     {% block content %}{% endblock %}

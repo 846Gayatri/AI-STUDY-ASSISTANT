@@ -18,6 +18,15 @@ os.makedirs("db", exist_ok=True)
 
 init_db()
 
+def log_activity(action_type, description):
+    try:
+        conn = get_db()
+        conn.execute("INSERT INTO activity_log (action_type, description) VALUES (?, ?)", (action_type, description))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Failed to log activity: {e}")
+
 @app.route("/")
 def index():
     conn = get_db()
@@ -60,6 +69,7 @@ def upload():
                           (doc_id, chunk, i, emb_str))
         conn.commit()
         conn.close()
+        log_activity("upload", f"Uploaded document: {file.filename}")
         return redirect(f"/document/{doc_id}")
     except Exception as e:
         print(f"Upload exception: {e}")
@@ -192,10 +202,16 @@ def api_study_plan(doc_id):
         "SELECT * FROM summaries WHERE document_id=? ORDER BY created_at DESC LIMIT 1", (doc_id,)).fetchone()
     summary_text = summary_row["summary_text"] if summary_row else ""
     plan = study_plan_agent.generate_study_plan(summary_text, "", days_until_exam=days)
+    
+    # Get filename for activity log
+    doc = conn.execute("SELECT filename FROM documents WHERE id=?", (doc_id,)).fetchone()
+    filename = doc["filename"] if doc else "Document"
+
     conn.execute("INSERT INTO study_plans (document_id, plan_json, exam_date) VALUES (?, ?, ?)",
                  (doc_id, json.dumps(plan), ""))
     conn.commit()
     conn.close()
+    log_activity("plan", f"Generated a {days}-day study plan for {filename}")
     return jsonify(plan)
 
 @app.route("/api/route", methods=["POST"])
@@ -213,10 +229,14 @@ def api_quiz_submit(doc_id):
     difficulty = data.get("difficulty", "medium")
     
     conn = get_db()
+    doc = conn.execute("SELECT filename FROM documents WHERE id=?", (doc_id,)).fetchone()
+    filename = doc["filename"] if doc else "Document"
+
     conn.execute("INSERT INTO quiz_attempts (document_id, score, total_questions, difficulty) VALUES (?, ?, ?, ?)",
                  (doc_id, score, total, difficulty))
     conn.commit()
     conn.close()
+    log_activity("quiz", f"Completed quiz on {filename} with score {score}/{total} (Difficulty: {difficulty})")
     return jsonify({"status": "success"})
 
 @app.route("/api/progress/<int:doc_id>")
@@ -279,6 +299,75 @@ def api_export_plan(doc_id):
     pdf.output(temp_path)
     
     return send_file(temp_path, as_attachment=True, download_name=f"study_plan_{doc_id}.pdf")
+
+@app.route("/dashboard")
+def dashboard():
+    conn = get_db()
+    # Fetch stats
+    total_docs = conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+    total_quizzes = conn.execute("SELECT COUNT(*) FROM quiz_attempts").fetchone()[0]
+    
+    avg_score_row = conn.execute("SELECT AVG(CAST(score AS FLOAT)/total_questions) FROM quiz_attempts WHERE total_questions > 0").fetchone()
+    avg_score = round(avg_score_row[0] * 100, 1) if avg_score_row and avg_score_row[0] is not None else 0
+    
+    total_plans = conn.execute("SELECT COUNT(*) FROM study_plans").fetchone()[0]
+    
+    # Recent documents
+    recent_docs = conn.execute("SELECT * FROM documents ORDER BY uploaded_at DESC LIMIT 5").fetchall()
+    
+    # Recent activity logs
+    recent_activities = conn.execute("SELECT * FROM activity_log ORDER BY created_at DESC LIMIT 10").fetchall()
+    
+    # Fetch all quiz attempts for aggregate chart
+    attempts = conn.execute("SELECT score, total_questions, created_at FROM quiz_attempts ORDER BY created_at ASC").fetchall()
+    attempts_data = [{"score": a["score"], "total": a["total_questions"], "date": a["created_at"]} for a in attempts]
+    
+    conn.close()
+    return render_template("dashboard.html", 
+                           total_docs=total_docs, 
+                           total_quizzes=total_quizzes, 
+                           avg_score=avg_score, 
+                           total_plans=total_plans,
+                           recent_docs=recent_docs,
+                           recent_activities=recent_activities,
+                           attempts_data=json.dumps(attempts_data))
+
+@app.route("/profile", methods=["GET", "POST"])
+def profile():
+    conn = get_db()
+    if request.method == "POST":
+        name = request.form.get("name", "Student")
+        email = request.form.get("email", "student@domain.com")
+        study_goal = request.form.get("study_goal", "Prepare for exams")
+        target_exam_date = request.form.get("target_exam_date", "")
+        
+        conn.execute("""UPDATE users SET name=?, email=?, study_goal=?, target_exam_date=? WHERE id=1""",
+                     (name, email, study_goal, target_exam_date))
+        conn.commit()
+        log_activity("profile_update", f"Updated profile details for {name}")
+        return redirect("/profile")
+        
+    user = conn.execute("SELECT * FROM users WHERE id=1").fetchone()
+    
+    # Calculate badges
+    total_docs = conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+    total_quizzes = conn.execute("SELECT COUNT(*) FROM quiz_attempts").fetchone()[0]
+    max_score_row = conn.execute("SELECT MAX(CAST(score AS FLOAT)/total_questions) FROM quiz_attempts WHERE total_questions > 0").fetchone()
+    max_score = max_score_row[0] if max_score_row else None
+    total_plans = conn.execute("SELECT COUNT(*) FROM study_plans").fetchone()[0]
+    
+    badges = []
+    if total_docs >= 1:
+        badges.append({"name": "Bronze Scholar", "desc": "Uploaded at least 1 document.", "icon": "📚"})
+    if total_quizzes >= 3:
+        badges.append({"name": "Quiz Warrior", "desc": "Attempted at least 3 quizzes.", "icon": "⚔️"})
+    if max_score is not None and max_score >= 0.8:
+        badges.append({"name": "Top Scorer", "desc": "Achieved a score of 80%+ on any quiz.", "icon": "🏆"})
+    if total_plans >= 1:
+        badges.append({"name": "Master Planner", "desc": "Generated at least 1 study plan.", "icon": "📅"})
+        
+    conn.close()
+    return render_template("profile.html", user=user, badges=badges)
 
 @app.route("/api/debug-logs")
 def debug_logs():

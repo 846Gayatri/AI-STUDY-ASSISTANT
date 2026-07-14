@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display: grid; gap: 2rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
+  
+  <!-- Left Side: Profile Edit Card -->
+  <div class="card" style="padding: 2rem; border-radius: 16px;">
+    <div style="text-align: center; margin-bottom: 2rem;">
+      <div style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%); color: white; display: inline-flex; justify-content: center; align-items: center; font-size: 2.25rem; font-weight: 700; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); margin-bottom: 1rem;">
+        {{ user.name[0] | upper if user and user.name else 'S' }}
+      </div>
+      <h3 style="margin: 0; font-size: 1.25rem;">{{ user.name if user else 'Student' }}</h3>
+      <p style="margin: 0.25rem 0 0 0; color: var(--text-secondary); font-size: 0.85rem;">{{ user.email if user else 'student@domain.com' }}</p>
+    </div>
+
+    <form action="/profile" method="POST" style="display: flex; flex-direction: column; gap: 1.25rem;">
+      <div>
+        <label for="name" style="display: block; font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.5rem;">Full Name</label>
+        <input type="text" id="name" name="name" value="{{ user.name if user else 'Student' }}" required 
+               style="width: 100%; box-sizing: border-box; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.03); color: var(--text-primary); outline: none; transition: border-color 0.2s;" 
+               onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border-color)'">
+      </div>
+      
+      <div>
+        <label for="email" style="display: block; font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.5rem;">Email Address</label>
+        <input type="email" id="email" name="email" value="{{ user.email if user else 'student@domain.com' }}" required 
+               style="width: 100%; box-sizing: border-box; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.03); color: var(--text-primary); outline: none; transition: border-color 0.2s;" 
+               onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border-color)'">
+      </div>
+
+      <div>
+        <label for="study_goal" style="display: block; font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.5rem;">Primary Study Goal</label>
+        <textarea id="study_goal" name="study_goal" rows="3" 
+                  style="width: 100%; box-sizing: border-box; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.03); color: var(--text-primary); outline: none; transition: border-color 0.2s; font-family: inherit; resize: none;" 
+                  onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border-color)'">{{ user.study_goal if user else 'Prepare for exams' }}</textarea>
+      </div>
+
+      <div>
+        <label for="target_exam_date" style="display: block; font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.5rem;">Target Exam Date</label>
+        <input type="date" id="target_exam_date" name="target_exam_date" value="{{ user.target_exam_date if user else '' }}" 
+               style="width: 100%; box-sizing: border-box; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.03); color: var(--text-primary); outline: none; transition: border-color 0.2s;" 
+               onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border-color)'">
+      </div>
+
+      <button type="submit" style="margin-top: 0.5rem; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%); color: white; border: none; padding: 0.85rem; border-radius: 8px; font-weight: 600; cursor: pointer; transition: opacity 0.2s;" 
+              onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+        Save Profile
+      </button>
+    </form>
+  </div>
+
+  <!-- Right Side: Achievements & Badges Card -->
+  <div class="card" style="padding: 2rem; border-radius: 16px; display: flex; flex-direction: column;">
+    <h3 style="margin-top: 0; margin-bottom: 1.5rem;">Your Achievements</h3>
+    
+    <div style="display: flex; flex-direction: column; gap: 1.5rem; flex: 1;">
+      {% if badges %}
+        {% for badge in badges %}
+          <div style="display: flex; gap: 1.25rem; align-items: center; background: rgba(255,255,255,0.02); padding: 1.25rem; border-radius: 12px; border: 1px solid var(--border-color);">
+            <div style="font-size: 2.5rem; line-height: 1;">
+              {{ badge.icon }}
+            </div>
+            <div>
+              <h4 style="margin: 0; font-size: 1.05rem; color: var(--accent);">{{ badge.name }}</h4>
+              <p style="margin: 0.25rem 0 0 0; color: var(--text-secondary); font-size: 0.85rem;">{{ badge.desc }}</p>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div style="text-align: center; color: var(--text-secondary); margin: auto 0; padding: 2rem 0;">
+          <span style="font-size: 3rem; display: block; margin-bottom: 0.75rem;">🔒</span>
+          <p style="margin: 0; font-size: 0.95rem;">No badges unlocked yet!</p>
+          <p style="margin: 0.25rem 0 0 0; font-size: 0.85rem; color: rgba(255,255,255,0.3);">Upload documents, take quizzes, and study regularly to unlock badges.</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

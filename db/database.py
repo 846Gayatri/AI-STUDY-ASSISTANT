@@ -72,5 +72,25 @@ def init_db():
         FOREIGN KEY(document_id) REFERENCES documents(id)
     )""")
 
+    c.execute("""CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT DEFAULT 'Student',
+        email TEXT DEFAULT 'student@domain.com',
+        study_goal TEXT DEFAULT 'Prepare for exams',
+        target_exam_date TEXT DEFAULT ''
+    )""")
+
+    c.execute("""CREATE TABLE IF NOT EXISTS activity_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action_type TEXT,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+
+    # Seed default user if not exists
+    user_exists = c.execute("SELECT 1 FROM users WHERE id = 1").fetchone()
+    if not user_exists:
+        c.execute("INSERT INTO users (id, name, email, study_goal) VALUES (1, 'Student', 'student@domain.com', 'Prepare for exams')")
+
     conn.commit()
     conn.close()
