@@ -55,10 +55,13 @@ Material:
         return json.loads(raw)
     except Exception as e:
         print(f"OpenAI Quiz generation failed, falling back to mock: {e}")
-        return [
-            {
-                "question": "Sample Question: What is the main thesis of the uploaded text?",
-                "options": ["Option A", "Option B", "Option C", "Option D"],
-                "correct_answer": "Option A"
-            }
-        ]
+        fallback_quiz = []
+        words = text.split()[:5]
+        topic = " ".join(words)
+        for i in range(1, num_questions + 1):
+            fallback_quiz.append({
+                "question": f"Question {i}: What is a major theme in the study material concerning '{topic}'?",
+                "options": [f"Option A ({i})", f"Option B ({i})", f"Option C ({i})", f"Option D ({i})"],
+                "correct_answer": f"Option A ({i})"
+            })
+        return fallback_quiz

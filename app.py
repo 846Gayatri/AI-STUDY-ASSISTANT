@@ -113,7 +113,8 @@ def api_quiz(doc_id):
         conn.close()
         return jsonify([])
 
-    quiz = quiz_agent.generate_quiz(doc["raw_text"], difficulty=difficulty)
+    num_questions = int(request.args.get("num_questions", 5))
+    quiz = quiz_agent.generate_quiz(doc["raw_text"], num_questions=num_questions, difficulty=difficulty)
     for q in quiz:
         conn.execute("""INSERT INTO quizzes (document_id, question, options, correct_answer, difficulty)
                          VALUES (?, ?, ?, ?, ?)""",

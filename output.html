@@ -1,35 +1,31 @@
-{% extends "base.html" %}
-{% block content %}
-<div class="card">
-  <h2>{{ document.filename }}</h2>
-  <p class="date" style="margin-bottom: 1.5rem;">Uploaded on {{ document.uploaded_at }}</p>
-
-  <div class="actions" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: center; margin-bottom: 2rem;">
-    <button onclick="callApi('summarize', this)">Summarize</button>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Study Assistant</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/">📚 AI Study Assistant</a>
+  </nav>
+  <main class="container">
     
-    <div style="display: flex; gap: 0.5rem; align-items: center; background: rgba(255,255,255,0.05); padding: 0.25rem 0.75rem; border-radius: 8px; border: 1px solid var(--border-color);">
-      <select id="quiz-num-select" style="padding: 0.5rem; border-radius: 6px; background: transparent; border: none; color: var(--text-primary); cursor: pointer; outline: none;">
-        <option value="5" style="background: #1e1e1e;">5 Questions</option>
-        <option value="10" style="background: #1e1e1e;">10 Questions</option>
-        <option value="15" style="background: #1e1e1e;">15 Questions</option>
-      </select>
-      <button onclick="generateQuiz(this)">Generate Quiz</button>
-    </div>
+<div class="card">
+  <h2>test.txt</h2>
+  <p class="date" style="margin-bottom: 1.5rem;">Uploaded on 2026-07-12 16:30:47</p>
 
-    <div style="display: flex; gap: 0.5rem; align-items: center; background: rgba(255,255,255,0.05); padding: 0.25rem 0.75rem; border-radius: 8px; border: 1px solid var(--border-color);">
-      <select id="study-days-select" style="padding: 0.5rem; border-radius: 6px; background: transparent; border: none; color: var(--text-primary); cursor: pointer; outline: none;">
-        <option value="7" style="background: #1e1e1e;">1 Week (7 Days)</option>
-        <option value="14" style="background: #1e1e1e;">2 Weeks (14 Days)</option>
-        <option value="30" style="background: #1e1e1e;">1 Month (30 Days)</option>
-      </select>
-      <button onclick="generateStudyPlan(this)">Study Plan</button>
-    </div>
+  <div class="actions">
+    <button onclick="callApi('summarize', this)">Summarize</button>
+    <button onclick="generateQuiz(this)">Generate Quiz</button>
+    <button onclick="generateStudyPlan(this)">Study Plan</button>
   </div>
 
   <div id="result"></div>
   <div id="quiz-container" style="display: none; margin-bottom: 2rem;"></div>
   
-  <a id="export-pdf-btn" class="button" href="/api/export-plan/{{ document.id }}" style="display: none; background: var(--accent); color: white; padding: 0.75rem 1.5rem; border-radius: 8px; text-decoration: none; margin-bottom: 2rem; align-items: center; justify-content: center;">Export Plan to PDF</a>
+  <a id="export-pdf-btn" class="button" href="/api/export-plan/2" style="display: none; background: var(--accent); color: white; padding: 0.75rem 1.5rem; border-radius: 8px; text-decoration: none; margin-bottom: 2rem; align-items: center; justify-content: center;">Export Plan to PDF</a>
 </div>
 
 <div class="card">
@@ -50,7 +46,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-  const docId = {{ document.id }};
+  const docId = 2;
   let currentQuiz = [];
 
   function showLoading(button, text) {
@@ -107,13 +103,12 @@
   async function generateStudyPlan(button) {
     const originalText = showLoading(button, 'Processing...');
     const resultDiv = document.getElementById("result");
-    const days = document.getElementById("study-days-select").value;
     document.getElementById("quiz-container").style.display = 'none';
     resultDiv.style.display = 'block';
     resultDiv.innerHTML = "Loading...";
     
     try {
-      const res = await fetch(`/api/study-plan/${docId}?days=${days}`);
+      const res = await fetch(`/api/study-plan/${docId}`);
       const data = await res.json();
       
       let html = `<div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin-bottom: 1.5rem;">`;
@@ -159,7 +154,6 @@
     const originalText = showLoading(button, 'Generating...');
     const resultDiv = document.getElementById("result");
     const quizDiv = document.getElementById("quiz-container");
-    const num = document.getElementById("quiz-num-select").value;
     
     resultDiv.style.display = 'none';
     document.getElementById("export-pdf-btn").style.display = 'none';
@@ -167,7 +161,7 @@
     quizDiv.innerHTML = "Loading quiz...";
     
     try {
-      const res = await fetch(`/api/quiz/${docId}?num_questions=${num}`);
+      const res = await fetch(`/api/quiz/${docId}`);
       currentQuiz = await res.json();
       renderQuiz();
     } catch (e) {
@@ -327,4 +321,8 @@
   // Initialize
   window.onload = loadProgress;
 </script>
-{% endblock %}
+
+  </main>
+  <script src="/static/js/main.js"></script>
+</body>
+</html>

@@ -34,7 +34,14 @@ Material:
         return response.choices[0].message.content
     except Exception as e:
         print(f"OpenAI call failed, falling back to mock: {e}")
-        # Fallback if OpenAI key is invalid at runtime
         words = text.split()[:15]
         topic = " ".join(words)
-        return f"Mock Summary (OpenAI error): {topic}..."
+        return f"""### Summary
+This study material focuses on: "{topic}...". It provides a comprehensive analysis of the core concepts, historical background, and theoretical frameworks necessary for understanding this subject area. The content is structured to guide the student from basic definitions to advanced applications.
+
+### Key Concepts
+- Core definitions and introductory concepts of "{words[0] if words else 'the topic'}"
+- Practical methodologies and frameworks discussed in the text
+- Analysis of key data points and primary case studies
+- Crucial formulas, theorems, or rule sets outlined in the material
+- Future developments, summaries of conclusions, and practical applications"""

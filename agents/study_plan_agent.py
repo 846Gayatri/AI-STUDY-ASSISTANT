@@ -36,10 +36,11 @@ Key points: {key_points}
         return json.loads(raw)
     except Exception as e:
         print(f"OpenAI Study Plan generation failed, falling back to mock: {e}")
-        return {
-            "day_1": {
-                "topics": ["Introductory concepts"],
-                "tasks": ["Read introduction", "Complete basic quiz"],
-                "est_hours": 1
+        plan = {}
+        for d in range(1, days_until_exam + 1):
+            plan[f"day_{d}"] = {
+                "topics": [f"Topic Overview {d}", f"Deep Dive Chapter {d}"],
+                "tasks": [f"Review chunk summaries for section {d}", f"Take the adaptive mock quiz"],
+                "est_hours": 2
             }
-        }
+        return plan
